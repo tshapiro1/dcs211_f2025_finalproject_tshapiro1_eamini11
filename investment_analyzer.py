@@ -219,14 +219,189 @@ def growthProjector() -> None:
     '''
     print("\n--- Portfolio Growth Projector ---")
     
-    # Need to --- Implement portfolio growth projector functionality
-    # - Prompt user for stock ticker(s)
-    # - Prompt for investment amount(s) for each stock
-    # - Prompt for holding period
-    # - Calculate projected returns using historical CAGR
-    # - Apply inflation adjustment for real returns
-    # - Generate matplotlib chart showing projected growth
-    # - Display results to user
+    # Step 1: Collect portfolio information from user
+    portfolio = []  # List to store tuples of (ticker, amount)
+    
+    while True:
+        # Get ticker
+        ticker = input("\nEnter stock ticker: ").strip().upper()
+        
+        # Validate ticker is not empty and contains only letters
+        if ticker == "" or not ticker.isalpha():
+            print("Error: Please enter a valid ticker symbol (letters only).")
+            continue
+        
+        # Get investment amount
+        while True:
+            amount_str = input(f"Enter investment amount for {ticker}: $").strip()
+            # Remove commas if user entered them
+            amount_str = amount_str.replace(",", "")
+            
+            try:
+                amount = float(amount_str)
+                if amount <= 0:
+                    print("Error: Amount must be greater than 0.")
+                    continue
+                break
+            except ValueError:
+                print("Error: Please enter a valid number.")
+        
+        # Add to portfolio
+        portfolio.append((ticker, amount))
+        print(f"Added {ticker} with ${amount:,.2f}")
+        
+        # Ask if they want to add another stock
+        while True:
+            add_more = input("\nAdd another stock? (y/n): ").strip().lower()
+            if add_more in ['y', 'n', 'yes', 'no']:
+                break
+            print("Error: Please enter 'y' or 'n'.")
+        
+        if add_more in ['n', 'no']:
+            break
+    
+    # Step 2: Get holding period
+    while True:
+        period_str = input("\nEnter holding period (in years): ").strip()
+        try:
+            holding_period = int(period_str)
+            if holding_period <= 0:
+                print("Error: Holding period must be greater than 0.")
+                continue
+            break
+        except ValueError:
+            print("Error: Please enter a whole number of years.")
+    
+    print(f"\n{'='*60}")
+    print(f"Calculating projections for {len(portfolio)} stock(s) over {holding_period} years...")
+    print(f"{'='*60}")
+    
+    # Step 3: Calculate CAGR for each stock and project growth
+    # US 10-year average inflation rate (approximate)
+    INFLATION_RATE = 0.025  # 2.5%
+    
+    stock_projections = []  # List to store projection data for each stock
+    
+    for ticker, initial_amount in portfolio:
+        print(f"\nAnalyzing {ticker}...")
+        
+        try:
+            # Get historical data for CAGR calculation
+            stock = yf.Ticker(ticker)
+            
+            # Use holding period for historical data, capped at 10 years
+            history_period = min(holding_period, 10)
+            history = stock.history(period=f"{history_period}y")
+            
+            if history.empty or len(history) < 2:
+                print(f"Warning: Insufficient historical data for {ticker}. Skipping.")
+                continue
+            
+            # Calculate CAGR: ((Ending Value / Beginning Value)^(1/years)) - 1
+            start_price = history['Close'].iloc[0]
+            end_price = history['Close'].iloc[-1]
+            years_of_data = len(history) / 252  # Approximate trading days per year
+            
+            cagr = ((end_price / start_price) ** (1 / years_of_data)) - 1
+            
+            print(f"  Historical CAGR ({int(years_of_data)} years): {cagr*100:.2f}%")
+            
+            # Project future values year by year
+            yearly_values = [initial_amount]  # Start with initial investment
+            for year in range(1, holding_period + 1):
+                # Apply CAGR to get nominal value
+                projected_value = initial_amount * ((1 + cagr) ** year)
+                yearly_values.append(projected_value)
+            
+            # Calculate inflation-adjusted final value
+            nominal_final = yearly_values[-1]
+            real_final = nominal_final / ((1 + INFLATION_RATE) ** holding_period)
+            
+            # Store projection data
+            stock_projections.append({
+                'ticker': ticker,
+                'initial': initial_amount,
+                'cagr': cagr,
+                'yearly_values': yearly_values,
+                'nominal_final': nominal_final,
+                'real_final': real_final
+            })
+            
+            print(f"  Initial Investment: ${initial_amount:,.2f}")
+            print(f"  Projected Value (nominal): ${nominal_final:,.2f}")
+            print(f"  Projected Value (inflation-adjusted): ${real_final:,.2f}")
+            
+        except Exception as e:
+            print(f"Error analyzing {ticker}: {e}")
+            continue
+    
+    # Check if we have any valid projections
+    if not stock_projections:
+        print("\nError: No valid stock data could be retrieved. Returning to menu.")
+        return
+    
+    # Step 4: Calculate total portfolio projections
+    print(f"\n{'='*60}")
+    print("PORTFOLIO SUMMARY")
+    print(f"{'='*60}")
+    
+    total_initial = sum(proj['initial'] for proj in stock_projections)
+    total_nominal = sum(proj['nominal_final'] for proj in stock_projections)
+    total_real = sum(proj['real_final'] for proj in stock_projections)
+    
+    print(f"\nTotal Initial Investment: ${total_initial:,.2f}")
+    print(f"Total Projected Value (nominal): ${total_nominal:,.2f}")
+    print(f"Total Projected Value (inflation-adjusted): ${total_real:,.2f}")
+    print(f"Total Nominal Gain: ${total_nominal - total_initial:,.2f} ({((total_nominal/total_initial - 1)*100):.2f}%)")
+    print(f"Total Real Gain: ${total_real - total_initial:,.2f} ({((total_real/total_initial - 1)*100):.2f}%)")
+    
+    # Step 5: Generate visualizations
+    print("\nGenerating charts...")
+    
+    # Chart 1: Total portfolio value over time
+    years = list(range(holding_period + 1))
+    total_yearly_values = [0] * (holding_period + 1)
+    
+    # Sum up all stocks' values for each year
+    for proj in stock_projections:
+        for i, value in enumerate(proj['yearly_values']):
+            total_yearly_values[i] += value
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(years, total_yearly_values, marker='o', linewidth=2, markersize=6, color='blue')
+    plt.title(f'Total Portfolio Projected Growth ({holding_period} Years)', fontsize=14, fontweight='bold')
+    plt.xlabel('Year', fontsize=12)
+    plt.ylabel('Portfolio Value ($)', fontsize=12)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
+    # Format y-axis to show currency
+    ax = plt.gca()
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
+    
+    plt.show()
+    
+    # Chart 2: Individual stock projections
+    plt.figure(figsize=(12, 7))
+    
+    for proj in stock_projections:
+        plt.plot(years, proj['yearly_values'], marker='o', linewidth=2, 
+                markersize=5, label=proj['ticker'])
+    
+    plt.title(f'Individual Stock Projected Growth ({holding_period} Years)', fontsize=14, fontweight='bold')
+    plt.xlabel('Year', fontsize=12)
+    plt.ylabel('Investment Value ($)', fontsize=12)
+    plt.legend(loc='best', fontsize=10)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
+    # Format y-axis to show currency
+    ax = plt.gca()
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
+    
+    plt.show()
+    
+    print("\nProjection complete! Charts displayed.")
     
 
 
