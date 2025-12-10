@@ -412,8 +412,6 @@ def main() -> None:
     Returns:
         None
     '''
-    stockAnalysis()
-    input()
     # Display usage/welcome message
     usage()
     
