@@ -289,9 +289,38 @@ def growthProjector() -> None:
             # Get historical data for CAGR calculation
             stock = yf.Ticker(ticker)
             
-            # Use holding period for historical data, capped at 10 years
-            history_period = min(holding_period, 10)
-            history = stock.history(period=f"{history_period}y")
+            # Get company info to find IPO date
+            info = stock.info
+            
+            # Determine how long company has been public
+            # Get all available historical data to check IPO date
+            max_history = stock.history(period="max")
+            
+            if max_history.empty:
+                print(f"Warning: No historical data available for {ticker}. Skipping.")
+                continue
+            
+            # Calculate years since IPO (first available trading date)
+            first_date = max_history.index[0]
+            # Convert to timezone-naive datetime
+            first_date_naive = pd.to_datetime(first_date).tz_localize(None)
+            years_since_ipo = (datetime.now() - first_date_naive).days / 365.25
+            
+            print(f"  Years since IPO: {years_since_ipo:.1f}")
+            
+            # Determine which period to use based on company age
+            if years_since_ipo < 5:
+                # Young company - use all available data
+                history = max_history
+                print(f"  Using all available data (young company)")
+            elif years_since_ipo < 10:
+                # Mid-age company - use recent 3-5 years to avoid early hypergrowth
+                history = stock.history(period="5y")
+                print(f"  Using recent 5 years (excluding early hypergrowth)")
+            else:
+                # Mature company - use recent 5 years
+                history = stock.history(period="5y")
+                print(f"  Using recent 5 years (mature company)")
             
             if history.empty or len(history) < 2:
                 print(f"Warning: Insufficient historical data for {ticker}. Skipping.")
@@ -304,7 +333,13 @@ def growthProjector() -> None:
             
             cagr = ((end_price / start_price) ** (1 / years_of_data)) - 1
             
-            print(f"  Historical CAGR ({int(years_of_data)} years): {cagr*100:.2f}%")
+            # Cap CAGR at 20% to prevent unrealistic projections
+            MAX_CAGR = 0.20
+            if cagr > MAX_CAGR:
+                print(f"  Calculated CAGR: {cagr*100:.2f}% (capped at {MAX_CAGR*100:.0f}%)")
+                cagr = MAX_CAGR
+            else:
+                print(f"  Historical CAGR ({int(years_of_data)} years): {cagr*100:.2f}%")
             
             # Project future values year by year
             yearly_values = [initial_amount]  # Start with initial investment
