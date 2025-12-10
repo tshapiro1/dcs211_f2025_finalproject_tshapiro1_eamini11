@@ -29,6 +29,8 @@ def usage() -> None:
     print("   - Earnings data (last quarter vs. expectations, next date)")
     print("\n2. Portfolio Growth Projector:")
     print("   - Enter stock ticker(s), investment amount(s), and holding period")
+    print("   - Manual entry OR import from CSV/Excel file")
+    print("   - CSV/Excel must have 'TICKER' and 'SHARES' columns")
     print("   - Calculate projected returns using historical average (CAGR)")
     print("   - Inflation-adjusted real returns")
     print("   - Visual chart of projected portfolio growth")
@@ -209,6 +211,124 @@ def stockAnalysis() -> None:
 '''
 
 
+def importPortfolioFromCSV() -> list:
+    '''
+    Import portfolio holdings from a CSV or Excel file.
+    Expects columns labeled "TICKER" and "SHARES" (case-insensitive).
+    Converts share quantities to dollar amounts using current market prices.
+    
+    Returns:
+        list: List of tuples (ticker, dollar_amount) or empty list if import fails
+    '''
+    # Get file path from user
+    file_input = input("\nEnter file path (CSV or Excel, or just filename if in current folder): ").strip()
+    
+    # Remove quotes if user copied path with quotes
+    file_input = file_input.strip('"').strip("'")
+    
+    # Check if it's just a filename or full path
+    import os
+    if not os.path.isabs(file_input):
+        # It's just a filename, look in current directory
+        file_path = os.path.join(os.getcwd(), file_input)
+    else:
+        # It's a full path
+        file_path = file_input
+    
+    # Try to read the file (support both CSV and Excel)
+    try:
+        # Check file extension
+        if file_path.lower().endswith('.csv'):
+            df = pd.read_csv(file_path, encoding='utf-8')
+        elif file_path.lower().endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(file_path)
+        else:
+            print("Error: File must be .csv, .xlsx, or .xls format")
+            return []
+    except FileNotFoundError:
+        print(f"Error: File not found: {file_path}")
+        return []
+    except Exception as e:
+        print(f"Error reading file: {e}")
+        return []
+    
+    # Convert column names to uppercase and strip whitespace for case-insensitive matching
+    df.columns = df.columns.str.strip().str.upper()
+    
+    # Debug: print columns found
+    print(f"Columns found in file: {list(df.columns)}")
+    
+    # Check if TICKER and SHARES columns exist
+    if 'TICKER' not in df.columns:
+        print("Error: File must have a column labeled 'TICKER' (case doesn't matter)")
+        print(f"Available columns: {list(df.columns)}")
+        return []
+    if 'SHARES' not in df.columns:
+        print("Error: File must have a column labeled 'SHARES' (case doesn't matter)")
+        print(f"Available columns: {list(df.columns)}")
+        return []
+    
+    # Extract ticker and shares data
+    portfolio = []
+    print("\nProcessing CSV data...")
+    
+    for index, row in df.iterrows():
+        ticker = str(row['TICKER']).strip().upper()
+        shares = row['SHARES']
+        
+        # Skip empty rows
+        if pd.isna(ticker) or ticker == '' or ticker == 'NAN':
+            continue
+        if pd.isna(shares) or shares == '':
+            continue
+        
+        # Validate ticker (should be letters only)
+        if not ticker.isalpha():
+            print(f"Warning: Skipping invalid ticker '{ticker}' on row {index + 2}")
+            continue
+        
+        # Convert shares to number
+        try:
+            shares = float(shares)
+            if shares <= 0:
+                print(f"Warning: Skipping {ticker} - shares must be greater than 0")
+                continue
+        except (ValueError, TypeError):
+            print(f"Warning: Skipping {ticker} - invalid share quantity '{shares}'")
+            continue
+        
+        # Fetch current price to calculate dollar amount
+        print(f"Fetching current price for {ticker}...")
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            current_price = info.get('currentPrice')
+            
+            if current_price is None or current_price <= 0:
+                # Try getting from recent history instead
+                history = stock.history(period="1d")
+                if not history.empty:
+                    current_price = history['Close'].iloc[-1]
+                else:
+                    print(f"Warning: Could not fetch price for {ticker}. Skipping.")
+                    continue
+            
+            dollar_amount = shares * current_price
+            portfolio.append((ticker, dollar_amount))
+            print(f"  Added: {ticker} - {shares} shares @ ${current_price:.2f} = ${dollar_amount:,.2f}")
+            
+        except Exception as e:
+            print(f"Warning: Error fetching data for {ticker}: {e}. Skipping.")
+            continue
+    
+    if not portfolio:
+        print("\nError: No valid stocks found in CSV.")
+        return []
+    
+    print(f"\nSuccessfully imported {len(portfolio)} stocks from CSV.")
+    return portfolio
+
+
 def growthProjector() -> None:
     '''
     Project portfolio growth based on historical performance and inflation adjustment.
@@ -219,46 +339,64 @@ def growthProjector() -> None:
     '''
     print("\n--- Portfolio Growth Projector ---")
     
-    # Step 1: Collect portfolio information from user
-    portfolio = []  # List to store tuples of (ticker, amount)
+    # Step 1: Ask user how they want to input portfolio
+    print("\nHow would you like to add stocks to your portfolio?")
+    print("  1 - Manual entry (type tickers and amounts)")
+    print("  2 - Import from CSV or Excel file")
     
     while True:
-        # Get ticker
-        ticker = input("\nEnter stock ticker: ").strip().upper()
-        
-        # Validate ticker is not empty and contains only letters
-        if ticker == "" or not ticker.isalpha():
-            print("Error: Please enter a valid ticker symbol (letters only).")
-            continue
-        
-        # Get investment amount
-        while True:
-            amount_str = input(f"Enter investment amount for {ticker}: $").strip()
-            # Remove commas if user entered them
-            amount_str = amount_str.replace(",", "")
-            
-            try:
-                amount = float(amount_str)
-                if amount <= 0:
-                    print("Error: Amount must be greater than 0.")
-                    continue
-                break
-            except ValueError:
-                print("Error: Please enter a valid number.")
-        
-        # Add to portfolio
-        portfolio.append((ticker, amount))
-        print(f"Added {ticker} with ${amount:,.2f}")
-        
-        # Ask if they want to add another stock
-        while True:
-            add_more = input("\nAdd another stock? (y/n): ").strip().lower()
-            if add_more in ['y', 'n', 'yes', 'no']:
-                break
-            print("Error: Please enter 'y' or 'n'.")
-        
-        if add_more in ['n', 'no']:
+        choice = input("\nEnter your choice (1 or 2): ").strip()
+        if choice in ['1', '2']:
             break
+        print("Error: Please enter 1 or 2.")
+    
+    portfolio = []  # List to store tuples of (ticker, amount)
+    
+    if choice == '2':
+        # Import from CSV
+        portfolio = importPortfolioFromCSV()
+        if not portfolio:
+            print("\nCSV import failed. Returning to menu.")
+            return
+    else:
+        # Manual entry
+        while True:
+            # Get ticker
+            ticker = input("\nEnter stock ticker: ").strip().upper()
+            
+            # Validate ticker is not empty and contains only letters
+            if ticker == "" or not ticker.isalpha():
+                print("Error: Please enter a valid ticker symbol (letters only).")
+                continue
+            
+            # Get investment amount
+            while True:
+                amount_str = input(f"Enter investment amount for {ticker}: $").strip()
+                # Remove commas if user entered them
+                amount_str = amount_str.replace(",", "")
+                
+                try:
+                    amount = float(amount_str)
+                    if amount <= 0:
+                        print("Error: Amount must be greater than 0.")
+                        continue
+                    break
+                except ValueError:
+                    print("Error: Please enter a valid number.")
+            
+            # Add to portfolio
+            portfolio.append((ticker, amount))
+            print(f"Added {ticker} with ${amount:,.2f}")
+            
+            # Ask if they want to add another stock
+            while True:
+                add_more = input("\nAdd another stock? (y/n): ").strip().lower()
+                if add_more in ['y', 'n', 'yes', 'no']:
+                    break
+                print("Error: Please enter 'y' or 'n'.")
+            
+            if add_more in ['n', 'no']:
+                break
     
     # Step 2: Get holding period
     while True:
@@ -352,6 +490,11 @@ def growthProjector() -> None:
             nominal_final = yearly_values[-1]
             real_final = nominal_final / ((1 + INFLATION_RATE) ** holding_period)
             
+            # Check for NaN values (can happen with invalid/problem stocks)
+            if pd.isna(nominal_final) or pd.isna(real_final) or any(pd.isna(v) for v in yearly_values):
+                print(f"  Warning: Unable to calculate valid projections for {ticker}. Skipping.")
+                continue
+            
             # Store projection data
             stock_projections.append({
                 'ticker': ticker,
@@ -402,12 +545,23 @@ def growthProjector() -> None:
         for i, value in enumerate(proj['yearly_values']):
             total_yearly_values[i] += value
     
+    # Debug output
+    print(f"\nDebug - Total yearly values: {[f'${v:,.0f}' for v in total_yearly_values[:5]]}... to ${total_yearly_values[-1]:,.0f}")
+    print(f"Debug - Number of years: {len(years)}, Number of values: {len(total_yearly_values)}")
+    
     plt.figure(figsize=(10, 6))
-    plt.plot(years, total_yearly_values, marker='o', linewidth=2, markersize=6, color='blue')
+    plt.plot(years, total_yearly_values, marker='o', linewidth=2, markersize=6, color='blue', label='Total Portfolio')
     plt.title(f'Total Portfolio Projected Growth ({holding_period} Years)', fontsize=14, fontweight='bold')
     plt.xlabel('Year', fontsize=12)
     plt.ylabel('Portfolio Value ($)', fontsize=12)
     plt.grid(True, alpha=0.3)
+    
+    # Set explicit axis limits for better visualization
+    plt.xlim(-0.5, holding_period + 0.5)
+    y_min = min(total_yearly_values) * 0.95
+    y_max = max(total_yearly_values) * 1.05
+    plt.ylim(y_min, y_max)
+    
     plt.tight_layout()
     
     # Format y-axis to show currency
