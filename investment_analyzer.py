@@ -60,16 +60,6 @@ def get_ticker() -> str:
         return ticker.upper()
 
 
-
-# Steps to Implement Stock Analysis:
-# 1. Ask user for stock ticker.
-# 2. Use yfinance to fetch current price, change %, volume, market cap, P/E.
-# 3. Compute historical returns (1-year and 5-year).
-# 4. Generate a matplotlib line chart of historical closing prices.
-# 5. Fetch recent news headlines related to the stock.
-# 6. Retrieve earnings data: last quarter EPS vs expected, next earnings date.
-# 7. Display all gathered information in readable format.
-
 def stockAnalysis() -> None:
     """
     Implements the Stock Analysis tool for the Investment Analyzer program.
@@ -171,15 +161,6 @@ def stockAnalysis() -> None:
         print("5-Year Return:        N/A")
 
     '''
-    # 3. Historical performance
-    download 1-year price history with period="1y"
-    download 5-year price history with period="5y"
-
-    compute 1-year return:
-        (last_close - first_close) / first_close * 100
-
-    compute 5-year return the same way
-
     # 4. Plot historical chart
     create matplotlib figure
     plot closing prices with dates
