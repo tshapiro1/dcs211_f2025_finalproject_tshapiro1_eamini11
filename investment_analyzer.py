@@ -8,9 +8,9 @@ import sys
 import yfinance as yf
 import requests
 import matplotlib.pyplot as plt
-import json
 from datetime import datetime
 import pandas as pd
+from bs4 import BeautifulSoup
 from helper import fmt_large as fl
 from helper import fmt_num as fn
 
@@ -24,16 +24,17 @@ def usage() -> None:
     print("\n1. Stock Analysis:")
     print("   - Current price, daily change %, volume, market cap, P/E ratio")
     print("   - Historical performance (1-year, 5-year returns)")
-    print("   - Visual chart of historical prices")
-    print("   - Recent news headlines")
-    print("   - Earnings data (last quarter vs. expectations, next date)")
+    print("   - Dual visual charts: 1-year and 5-year price history")
+    print("   - Recent news headlines via Google News RSS feed")
+    print("   - Earnings: Net Income, trailing EPS, next report date")
+    print("   - Data sourced from yfinance API (Yahoo Finance)")
     print("\n2. Portfolio Growth Projector:")
     print("   - Enter stock ticker(s), investment amount(s), and holding period")
     print("   - Manual entry OR import from CSV/Excel file")
     print("   - CSV/Excel must have 'TICKER' and 'SHARES' columns")
-    print("   - Calculate projected returns using historical average (CAGR)")
-    print("   - Inflation-adjusted real returns")
-    print("   - Visual chart of projected portfolio growth")
+    print("   - Calculates CAGR from historical data (5-year or max available)")
+    print("   - Projects future growth with 2.5% inflation adjustment")
+    print("   - Dual charts: Total portfolio + individual stock breakdowns")
     print("\nUsage: python investment_analyzer.py")
     print("=" * 60)
 
@@ -181,12 +182,11 @@ def stockAnalysis() -> None:
         response = requests.get(rss_url, headers=headers, timeout=10)
         
         if response.status_code == 200:
-            # Parse the XML response
-            import xml.etree.ElementTree as ET
-            root = ET.fromstring(response.content)
+            # Parse the XML response with BeautifulSoup
+            soup = BeautifulSoup(response.content, 'xml')
             
             # Find all news articles
-            articles = root.findall('.//item')
+            articles = soup.find_all('item')
             
             # Display up to 5 recent articles
             if articles:
@@ -196,11 +196,11 @@ def stockAnalysis() -> None:
                     date = article.find('pubDate')
                     
                     # Print article info if title exists
-                    if title is not None and title.text:
+                    if title and title.text:
                         print(f"\n{i}. {title.text}")
-                        if link is not None and link.text:
+                        if link and link.text:
                             print(f"   Link: {link.text}")
-                        if date is not None and date.text:
+                        if date and date.text:
                             print(f"   Date: {date.text}")
             else:
                 # No articles found in feed
