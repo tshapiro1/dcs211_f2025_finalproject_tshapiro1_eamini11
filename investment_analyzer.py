@@ -161,35 +161,155 @@ def stockAnalysis() -> None:
         print(f"5-Year Return:        {return_5y:.2f}%")
     else:
         print("5-Year Return:        N/A")
-
-    '''
-    # 4. Plot historical chart
-    create matplotlib figure
-    plot closing prices with dates
-    label axes and title
-    show plot
-
-    # 5. Recent news
-    attempt to fetch ticker_obj.news
-    if news exists:
-       print latest 5 headlines with URLs
+    
+    # ---------- 4. Recent News ----------
+    
+    print("\n--- Recent News ---")
+    
+    try:
+        # Get company name for better search results
+        company_name = info.get('longName', ticker)
+        search_term = company_name if company_name else ticker
+        
+        # Build Google News RSS feed URL
+        rss_url = f"https://news.google.com/rss/search?q={search_term}+stock&hl=en-US&gl=US&ceid=US:en"
+        
+        # Set browser headers so Google accepts our request
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        
+        # Fetch the news feed
+        response = requests.get(rss_url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            # Parse the XML response
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(response.content)
+            
+            # Find all news articles
+            articles = root.findall('.//item')
+            
+            # Display up to 5 recent articles
+            if articles:
+                for i, article in enumerate(articles[:5], 1):
+                    title = article.find('title')
+                    link = article.find('link')
+                    date = article.find('pubDate')
+                    
+                    # Print article info if title exists
+                    if title is not None and title.text:
+                        print(f"\n{i}. {title.text}")
+                        if link is not None and link.text:
+                            print(f"   Link: {link.text}")
+                        if date is not None and date.text:
+                            print(f"   Date: {date.text}")
+            else:
+                # No articles found in feed
+                print("No recent news found.")
+                print(f"\nView news at: https://finance.yahoo.com/quote/{ticker}/news")
+        else:
+            # Request failed
+            print("Unable to fetch news automatically.")
+            print(f"\nView news at: https://finance.yahoo.com/quote/{ticker}/news")
+            
+    except Exception as e:
+        # Any error occurred
+        print("Unable to fetch news automatically.")
+        print(f"\nView news at: https://finance.yahoo.com/quote/{ticker}/news")
+    
+    # ---------- 5. Earnings Data ----------
+    
+    print("\n--- Earnings Information ---")
+    try:
+        # Get the quarterly income statement
+        quarterly_income = ticker_obj.quarterly_income_stmt
+        
+        # Check if we have income data
+        if quarterly_income is not None and not quarterly_income.empty:
+            # Get the most recent quarter's Net Income
+            if 'Net Income' in quarterly_income.index:
+                latest_net_income = quarterly_income.loc['Net Income'].iloc[0]
+                quarter_date = quarterly_income.columns[0]
+                
+                print(f"Most Recent Quarter Net Income: ${latest_net_income:,.0f}")
+                print(f"Quarter Date: {quarter_date.strftime('%Y-%m-%d')}")
+        
+        # Get trailing EPS (earnings per share for last 12 months)
+        eps = info.get('trailingEps')
+        if eps:
+            print(f"Trailing EPS (12 months): ${eps:.2f}")
+        
+        # Get next earnings date - try multiple sources
+        next_earnings_found = False
+        
+        # Source 1: Try the info dictionary first (most reliable)
+        earnings_date_list = info.get('earningsDate')
+        if earnings_date_list and isinstance(earnings_date_list, list) and len(earnings_date_list) > 0:
+            # Convert timestamp to readable date
+            earnings_date = earnings_date_list[0]
+            print(f"Next Earnings Date: {earnings_date.strftime('%Y-%m-%d')}")
+            next_earnings_found = True
+        
+        # Source 2: Try calendar object
+        if not next_earnings_found:
+            try:
+                calendar = ticker_obj.calendar
+                if calendar is not None and 'Earnings Date' in calendar.index:
+                    earnings_date = calendar.loc['Earnings Date'].iloc[0]
+                    if pd.notna(earnings_date):
+                        print(f"Next Earnings Date: {earnings_date.strftime('%Y-%m-%d')}")
+                        next_earnings_found = True
+            except:
+                pass
+        
+        # If no date found, print message
+        if not next_earnings_found:
+            print("Next Earnings Date: Not available")
+            
+    except Exception as e:
+        print(f"Unable to fetch earnings data: {e}")
+    
+    # ---------- 6. Historical Price Charts (displayed last) ----------
+    
+    print("\n--- Historical Price Charts ---")
+    print("Close the chart windows to continue...\n")
+    
+    # Chart 1: 1-year history
+    if not history_1y.empty:
+        plt.figure(figsize=(10, 6))
+        plt.plot(history_1y.index, history_1y['Close'], linewidth=2, color='blue')
+        plt.title(f'{ticker} Stock Price - Past Year', fontsize=14, fontweight='bold')
+        plt.xlabel('Date', fontsize=12)
+        plt.ylabel('Price ($)', fontsize=12)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        
+        # Format y-axis to show currency
+        ax = plt.gca()
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:.2f}'))
+        
+        plt.show()
+        print("[Chart displayed: 1-year price history]")
     else:
-       print "No news available"
-
-    # 6. Earnings data
-    try to fetch earnings dataframe via ticker_obj.earnings
-    try to fetch quarterly earnings via ticker_obj.quarterly_earnings
-    extract last EPS actual, last EPS estimate
-    extract next earnings date
-
-    # 7. Display results neatly
-    print current price, daily change %, volume, market cap, PE
-    print 1-year and 5-year returns
-    print news headlines
-    print earnings info
-
-    return None
-'''
+        print("[1-year chart unavailable: Insufficient price data]")
+    
+    # Chart 2: 5-year history
+    if not history_5y.empty:
+        plt.figure(figsize=(10, 6))
+        plt.plot(history_5y.index, history_5y['Close'], linewidth=2, color='green')
+        plt.title(f'{ticker} Stock Price - Past 5 Years', fontsize=14, fontweight='bold')
+        plt.xlabel('Date', fontsize=12)
+        plt.ylabel('Price ($)', fontsize=12)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        
+        # Format y-axis to show currency
+        ax = plt.gca()
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:.2f}'))
+        
+        plt.show()
+        print("[Chart displayed: 5-year price history]")
+    else:
+        print("[5-year chart unavailable: Insufficient price data]")
 
 
 def importPortfolioFromCSV() -> list:
@@ -402,14 +522,16 @@ def growthProjector() -> None:
     stock_projections = []  # List to store projection data for each stock
     
     for ticker, initial_amount in portfolio:
-        print(f"\nAnalyzing {ticker}...")
-        
         try:
             # Get historical data for CAGR calculation
             stock = yf.Ticker(ticker)
             
             # Get company info to find IPO date
             info = stock.info
+            
+            # Get company name for display
+            company_name = info.get('longName', ticker)
+            print(f"\nAnalyzing {company_name} ({ticker})...")
             
             # Determine how long company has been public
             # Get all available historical data to check IPO date
